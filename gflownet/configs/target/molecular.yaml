@@ -1,0 +1,9 @@
+defaults:
+  - base_target
+
+_target_: gflownet.tasks.molecular.MolecularTask
+
+ndim: 66  # 22 atoms x 3 coordinates for alanine dipeptide
+temperature: 300  # Kelvin
+friction: 0.001  # 1/fs
+timestep: 1.0  # fs 
