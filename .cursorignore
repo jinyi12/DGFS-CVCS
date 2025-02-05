@@ -1,0 +1,16 @@
+outputs/
+*.log
+*.pt
+*.png
+*.pdf
+*.html
+*.json
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pyw
+*.pyz
+*.pywz
+
+**/__pycache__/

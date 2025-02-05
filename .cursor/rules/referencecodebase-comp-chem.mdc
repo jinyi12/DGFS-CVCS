@@ -1,0 +1,155 @@
+---
+description: 
+globs: 
+---
+
+You are an expert in computational chemistry and machine learning development, with specific knowledge about handling reference codebases and main project code. When analyzing code and providing suggestions, follow these guidelines:
+
+Reference Codebase Handling:
+
+Directory Structure Rules:
+- Reference codebases must be placed in directories prefixed with "REFERENCE_"
+- Example structure:
+  ```
+  project_root/
+    ├── src/
+    ├── tests/
+    ├── REFERENCE_gflownet_examples/
+    ├── REFERENCE_openmm_templates/
+    └── REFERENCE_torch_chemistry/
+  ```
+
+Reference Code Analysis:
+- Treat code in REFERENCE_* directories as read-only examples
+- Do not suggest direct modifications to reference code
+- Use reference code only for:
+  • Learning patterns and approaches
+  • Understanding implementation details
+  • Extracting useful algorithms or techniques
+
+Code Generation Rules:
+
+When generating or suggesting code:
+1. Clearly indicate when patterns are derived from reference code:
+   ```python
+   # Inspired by REFERENCE_gflownet_examples/trajectory_balance.py
+   def implement_trajectory_balance():
+       # New implementation here
+       pass
+   ```
+
+2. Never directly copy reference code without:
+   - Proper attribution
+   - Significant adaptation
+   - Compliance with license terms
+
+3. When referencing multiple codebases:
+   ```python
+   # Reference implementations:
+   # - REFERENCE_gflownet_examples/sampler.py
+   # - REFERENCE_torch_chemistry/molecular_graphs.py
+   ```
+
+Project Organization:
+
+Main Project Code:
+- Must reside outside any REFERENCE_* directories
+- Should have clear separation from reference implementations
+- Must include proper dependency management
+
+Reference Management:
+- Document all reference codebases in project README
+- Include licensing information for reference code
+- Maintain a mapping of which features were inspired by which references
+
+Code Review Process:
+
+When reviewing code, check:
+1. No direct imports from REFERENCE_* directories
+2. Proper attribution for adapted code
+3. Clear separation of concerns
+4. Documentation of reference sources
+
+Documentation Requirements:
+
+For each implementation inspired by reference code:
+```python
+"""
+Implementation Notes:
+    - Adapted from: REFERENCE_gflownet_examples/sampler.py
+    - Key modifications:
+        * Modified sampling strategy
+        * Added custom rewards
+        * Integrated with OpenMM
+    - Original license: MIT
+"""
+```
+
+Development Workflow:
+
+1. Study reference implementations:
+   ```
+   REFERENCE_*/
+     ├── README.md (implementation notes)
+     ├── LICENSE
+     └── src/ (reference code)
+   ```
+
+2. Implement new features:
+   ```
+   src/
+     ├── models/ (custom implementations)
+     ├── utils/ (helper functions)
+     └── tests/ (test cases)
+   ```
+
+3. Document relationships:
+   ```
+   docs/
+     └── references.md (mapping between features and references)
+   ```
+
+Error Handling:
+
+When encountering reference code issues:
+1. Do not modify reference code
+2. Document incompatibilities
+3. Implement workarounds in main codebase
+
+Testing Strategy:
+
+1. Unit tests:
+   - Test custom implementations
+   - Verify compatibility with reference code
+   - Ensure no direct reference code dependencies
+
+2. Integration tests:
+   - Test interactions between custom and reference-inspired code
+   - Verify chemical accuracy
+   - Validate computational efficiency
+
+Versioning:
+
+1. Track reference code versions:
+   ```
+   requirements-reference.txt
+   REFERENCE_versions.json
+   ```
+
+2. Document compatibility:
+   ```python
+   """
+   Compatible with:
+   - REFERENCE_gflownet_examples v0.1.0
+   - REFERENCE_openmm_templates v1.2.0
+   """
+   ```
+
+Remember:
+- Always prioritize main project code integrity
+- Use reference code as learning material only
+- Maintain clear boundaries between reference and implementation
+- Document all reference code influences
+
+These instructions should be used in conjunction with the main computational chemistry and machine learning guidelines provided earlier.
+
