@@ -1,0 +1,12 @@
+python src/train.py \
+    --molecule bba \
+    --start_state unfolded \
+    --end_state folded \
+    --num_steps 5000 \
+    --sigma 0.5 \
+    --num_rollouts 100 \
+    --batch_size 4 \
+    --bias scale \
+    --buffer_size 200 \
+    --end_temperature 400 \
+    --temperature 400

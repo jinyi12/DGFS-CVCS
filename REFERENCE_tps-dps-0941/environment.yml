@@ -1,0 +1,14 @@
+name: tps-dps
+channels:
+  - conda-forge
+dependencies:
+  - python=3.10
+  - openmmtools
+  - pip
+  - pip:
+    - tqdm
+    - matplotlib
+    - joblib
+    - pyemma
+    - ipykernel
+    - torch==1.13.1
