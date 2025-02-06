@@ -3,14 +3,16 @@ import openmm.unit as unit
 from abc import abstractmethod
 from .base import BaseTask
 
+
 class BaseMolecularDynamics(BaseTask):
     """Base class for molecular dynamics tasks in GFlowNet"""
+
     def __init__(self, cfg):
         super().__init__()
         self.temperature = cfg.temperature * unit.kelvin
         self.friction = cfg.friction / unit.femtoseconds
         self.timestep = cfg.timestep * unit.femtoseconds
-        
+
         # Setup system and get initial state
         self.pdb, self.integrator, self.simulation, self.external_force = self.setup()
         self.get_md_info()
@@ -25,10 +27,12 @@ class BaseMolecularDynamics(BaseTask):
     def get_md_info(self):
         """Get system information like masses and thermal noise parameters"""
         self.num_particles = self.simulation.system.getNumParticles()
-        m = np.array([
-            self.simulation.system.getParticleMass(i).value_in_unit(unit.dalton)
-            for i in range(self.num_particles)
-        ])
+        m = np.array(
+            [
+                self.simulation.system.getParticleMass(i).value_in_unit(unit.dalton)
+                for i in range(self.num_particles)
+            ]
+        )
         self.heavy_atoms = m > 1.1
         self.m = unit.Quantity(m, unit.dalton)
         # ... rest of get_md_info from BaseDynamics
@@ -77,17 +81,36 @@ class BaseMolecularDynamics(BaseTask):
         return -self.energy(x)
 
     def energy_function(self, positions):
-        """Compute both forces and potential energy"""
+        """Compute both forces and potential energy
+
+        Args:
+            positions: torch.Tensor of shape (batch_size, num_particles * 3)
+
+        Returns:
+            tuple: (forces, potentials) as numpy arrays
+        """
         forces, potentials = [], []
         for pos in positions:
-            self.simulation.context.setPositions(pos)
+            # Convert PyTorch tensor to numpy array
+            pos_np = pos.detach().cpu().numpy()
+            # Reshape from (num_particles * 3,) to (num_particles, 3)
+            pos_np = pos_np.reshape(-1, 3)
+            # Create OpenMM-compatible positions with units
+            pos_openmm = unit.Quantity(pos_np, unit.nanometer)
+
+            # Set positions and compute state
+            self.simulation.context.setPositions(pos_openmm)
             state = self.simulation.context.getState(getForces=True, getEnergy=True)
+
+            # Get forces and potential energy
             force = state.getForces().value_in_unit(
                 unit.dalton * unit.nanometer / unit.femtosecond**2
             )
             potential = state.getPotentialEnergy().value_in_unit(
                 unit.kilojoules / unit.mole
             )
+
             forces.append(force)
             potentials.append(potential)
-        return np.array(forces), np.array(potentials) 
+
+        return np.array(forces), np.array(potentials)
