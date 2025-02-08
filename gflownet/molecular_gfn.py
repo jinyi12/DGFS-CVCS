@@ -33,9 +33,9 @@ class MolecularGFlowNet(DetailedBalance):
 
         Args:
             traj (list): A list of tuples, each containing a time, a state, and a reward.
-                            - t: time, shape: [b, 1]
+                            - t: time, shape: []
                             - x: state, shape: [b, d]
-                            - r: reward, shape: [b, 1]
+                            - r: reward, shape: [b]
             debug (bool, optional): Whether to print debug information. Defaults to False.
 
         Returns:
@@ -44,7 +44,7 @@ class MolecularGFlowNet(DetailedBalance):
                 - log_pf: shape: [b, T]
                 - log_pb: shape: [b, T]
         #"""
-        # print("Length of traj:", len(traj))
+        print("Length of traj:", len(traj))
         # print("First element of traj:", traj[0])
         # print("traj[0][1].shape:", traj[0][1].shape)
         batch_size = traj[0][1].shape[0]  # Get batch size from first trajectory element
@@ -55,22 +55,32 @@ class MolecularGFlowNet(DetailedBalance):
             t[None].to(self.device).repeat(batch_size, 1) for (t, x, r) in traj
         ]  # Times
 
-        # print("xs shape:", xs[0].shape)
-        # print("ts shape:", ts[0].shape)
+        print("xs shape:", xs[0].shape)
+        print("ts shape:", ts[0].shape)
 
-        state = torch.cat(xs[:-1], dim=0)  # All states except last
-        next_state = torch.cat(xs[1:], dim=0)  # All states except first
-        time = torch.cat(ts[:-1], dim=0)  # All times except last
-        next_time = torch.cat(ts[1:], dim=0)  # All times except first
+        state = torch.cat(xs[:-1], dim=0)  # All states except last (T*b, d)
+        next_state = torch.cat(xs[1:], dim=0)  # All states except first (T*b, d)
+        time = torch.cat(ts[:-1], dim=0)  # All times except last (T*b, 1)
+        next_time = torch.cat(ts[1:], dim=0)  # All times except first (T*b, 1)
+
+        print("state shape:", state.shape)
+        print("next_state shape:", next_state.shape)
+        print("time shape:", time.shape)
+        print("next_time shape:", next_time.shape)
+
         log_pf = self.log_pf(time, state, next_state)  # Forward probabilities
         log_pb = self.log_pb(next_time, next_state, state)  # Backward probabilities
+        log_pf = rearrange(log_pf, "(T b) -> b T", b=batch_size)
+        log_pb = rearrange(log_pb, "(T b) -> b T", b=batch_size)
 
-        states = torch.cat(xs, dim=0)  # All states
-        times = torch.cat(ts, dim=0)  # All times
-        flows = self.flow(times, states).squeeze(-1)  # Calculate flows
+        states = torch.cat(xs, dim=0)  # All states ((T+1)*b, d)
+        times = torch.cat(ts, dim=0)  # All times ((T+1)*b, 1)
+        flows = self.flow(times, states).squeeze(
+            -1
+        )  # Calculate flows ((T+1)*b,1) -> ((T+1)*b,)
         flows = rearrange(
             flows, "(T1 b) -> b T1", b=batch_size
-        )  # Reshape from [T1*b] to [b, T1]
+        )  # Reshape from [T+1*b] to [b, T+1]
 
         # Handle rewards with potential extra dimension
         rs = [r.to(self.device) for (t, x, r) in traj]
@@ -82,9 +92,9 @@ class MolecularGFlowNet(DetailedBalance):
         T1 = len(traj)  # number of timesteps
         logrs = logrs.view(T1, batch_size).t()
 
-        flows = flows + logrs
+        flows = flows + logrs  # (b, T+1)
 
-        logr_terminal = self.logr_from_traj(traj)
+        logr_terminal = self.logr_from_traj(traj)  # (b,)
 
         # print("logr_terminal shape:", logr_terminal.shape)
         flows[:, -1] = logr_terminal
@@ -97,6 +107,7 @@ class MolecularGFlowNet(DetailedBalance):
 
     def train_loss(self, traj):
         batch_size = traj[0][1].shape[0]
+        print("Getting flow logp from traj")
         logits_dict = self.get_flow_logp_from_traj(traj)
         flows, log_pf, log_pb = (
             logits_dict["flows"],
@@ -137,6 +148,7 @@ class MolecularGFlowNet(DetailedBalance):
         return info
 
     def eval_step(self, num_samples, logreward_fn=None):
+        print("Starting eval step")
         self.eval()
         if logreward_fn is None:
             logreward_fn = self.logr_fn

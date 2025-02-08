@@ -42,7 +42,6 @@ class MolecularGFlowNetAgent:
                 - x: state, shape: [b, d]
                 - r: reward, shape: [b]
         """
-        print("Shape of reward:", traj[-1][2].shape)
         self.gfn.train()
         loss_info = self.gfn.train_step(traj)
         return loss_info
