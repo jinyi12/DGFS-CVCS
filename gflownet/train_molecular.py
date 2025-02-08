@@ -6,6 +6,7 @@ from omegaconf import OmegaConf
 from gflownet.molecular_agent import MolecularGFlowNetAgent
 from gflownet.utils import loss2ess_info, setup_logging
 from gflownet.tasks.molecular import MolecularTask
+from gflownet.tasks.molecular_mds import MolecularMDs
 
 parser = argparse.ArgumentParser()
 
@@ -122,8 +123,12 @@ def main():
     if torch.cuda.is_available():
         torch.cuda.manual_seed(args.seed)
 
-    # Initialize agent
-    agent = MolecularGFlowNetAgent(cfg)
+    # Initialize MDs first
+    mds = MolecularMDs(cfg, cfg.batch_size)
+    logger.info(f"System dimension (num_particles * 3): {mds.num_particles * 3}")
+
+    # Initialize agent with MDs
+    agent = MolecularGFlowNetAgent(cfg, mds)
 
     # Setup temperature annealing
     temperatures = torch.linspace(
@@ -137,15 +142,12 @@ def main():
 
     for epoch in range(args.num_epochs):
         current_temp = temperatures[epoch]
-        agent.task.set_temperature(current_temp)
-
         logger.info(f"Epoch {epoch}, Temperature: {current_temp:.2f}")
 
-        # Sample trajectories
-        traj, sample_info = agent.sample(args.batch_size)
+        # Sample trajectories using MDs
+        traj, sample_info = agent.sample(args.batch_size, mds, current_temp)
 
         # Training step
-        # print("Shape of reward before training:", traj[-1][2].shape)
         loss_info = agent.train(traj)
         global_step += 1
 
@@ -161,7 +163,7 @@ def main():
         if global_step % args.eval_interval == 0:
             agent.gfn.eval()
             with torch.no_grad():
-                eval_traj, eval_info = agent.sample(args.num_samples)
+                eval_traj, eval_info = agent.sample(args.num_samples, mds, current_temp)
                 ess_info = loss2ess_info(eval_info)
                 logger.info(
                     f"Eval Step {global_step}: "

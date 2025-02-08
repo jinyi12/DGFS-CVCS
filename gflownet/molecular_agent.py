@@ -4,44 +4,104 @@ from gflownet.gflownet import (
     sample_traj,
 )  # reuse the sampling function from the original file
 from gflownet.tasks.molecular import MolecularTask
+from gflownet.tasks.molecular_mds import MolecularMDs
 
 
 class MolecularGFlowNetAgent:
     """
     The MolecularGFlowNetAgent integrates the MolecularGFlowNet algorithm with
-    the molecular simulation task. It provides a simple interface for sampling
-    trajectories and training the model, following the structure of the reference
-    TPS/DPS codebase.
+    the molecular simulation task, following the structure of DiffusionPathSampler.
     """
 
-    def __init__(self, cfg):
+    def __init__(self, cfg, mds):
+        """Initialize agent with config and molecular dynamics simulator.
+
+        Args:
+            cfg: Configuration object
+            mds: MolecularMDs instance managing multiple MD simulations
+        """
         self.cfg = cfg
-        # Instantiate the molecular task (which sets up the OpenMM system, etc.)
-        self.task = MolecularTask(cfg)
-        # Create the molecular-specific GFlowNet agent with the task
-        self.gfn = MolecularGFlowNet(cfg, task=self.task)
+        # Create GFlowNet with template task from mds
+        self.gfn = MolecularGFlowNet(cfg, task=mds.template_task)
         self.device = self.gfn.device
 
-    def sample(self, num_samples):
+    # def sample(self, num_samples):
+    #     """
+    #     Sample a batch of trajectories using the GFlowNet policy.
+    #     """
+    #     self.gfn.eval()
+    #     with torch.no_grad():
+    #         traj, info = sample_traj(
+    #             self.gfn, self.cfg, self.gfn.logr_fn, batch_size=num_samples
+    #         )
+    #     return traj, info
+
+    def sample(self, num_samples, mds, temperature):
+        """Sample trajectories using OpenMM integration.
+
+        Args:
+            num_samples: Number of trajectories to sample
+            mds: MolecularMDs instance to use for sampling
+            temperature: Current temperature for sampling
+
+        Returns:
+            tuple: (traj, info) containing trajectories and sampling info
         """
-        Sample a batch of trajectories using the GFlowNet policy.
-        """
-        self.gfn.eval()
-        with torch.no_grad():
-            traj, info = sample_traj(
-                self.gfn, self.cfg, self.gfn.logr_fn, batch_size=num_samples
-            )
+        device = self.gfn.device
+        positions = torch.zeros(
+            (num_samples, int(self.cfg.t_end / self.cfg.dt) + 1, mds.num_particles, 3),
+            device=device,
+        )
+        forces = torch.zeros_like(positions)
+
+        # Get initial state from all simulations
+        position, force = mds.report()
+        positions[:, 0] = position
+        forces[:, 0] = force
+
+        # Reset all simulations
+        mds.reset()
+        mds.set_temperature(temperature)
+
+        # Build trajectory
+        traj = []
+        t = torch.tensor(0.0)
+        x = position.reshape(num_samples, -1)
+        fl_logr = self.gfn.logr_fn(x)
+        traj.append((t, x.cpu(), fl_logr.cpu()))
+
+        # Sample trajectories
+        for s in range(1, int(self.cfg.t_end / self.cfg.dt) + 1):
+            cur_t = torch.tensor(s * self.cfg.dt)
+
+            # Get GFlowNet policy output (force bias)
+            bias = self.gfn.f(cur_t, x.detach()).detach()
+            bias = bias.reshape(num_samples, mds.num_particles, 3).cpu().numpy()
+
+            # Step all simulations with bias force
+            mds.step(bias)
+
+            # Get updated states
+            position, force = mds.report()
+            positions[:, s] = position
+            forces[:, s] = force - torch.tensor(bias, device=device)
+
+            # Update trajectory
+            x = position.reshape(num_samples, -1)
+            fl_logr = self.gfn.logr_fn(x)
+            traj.append((cur_t, x.cpu(), fl_logr.cpu()))
+
+        # Reset all simulations
+        mds.reset()
+
+        # Compute trajectory info
+        logw = self.gfn.log_weight(traj)
+        info = {"pis_logw": logw, "x_max": positions.abs().max().item()}
+
         return traj, info
 
     def train(self, traj):
-        """
-        Perform a training step given a batch of trajectories.
-        Args:
-            traj (list): A list of tuples, each containing a time, a state, and a reward.
-                - t: time, shape: []
-                - x: state, shape: [b, d]
-                - r: reward, shape: [b]
-        """
+        """Perform a training step given a batch of trajectories."""
         self.gfn.train()
         loss_info = self.gfn.train_step(traj)
         return loss_info
