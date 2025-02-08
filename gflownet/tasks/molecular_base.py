@@ -2,6 +2,7 @@ import numpy as np
 import openmm.unit as unit
 from abc import abstractmethod
 from .base import BaseTask
+import torch
 
 
 class BaseMolecularDynamics(BaseTask):
@@ -110,7 +111,21 @@ class BaseMolecularDynamics(BaseTask):
                 unit.kilojoules / unit.mole
             )
 
-            forces.append(force)
+            forces.append(
+                np.array(force).flatten()
+            )  # Convert to numpy array and flatten
             potentials.append(potential)
 
-        return np.array(forces), np.array(potentials)
+        # Stack and convert to torch tensors
+        forces = torch.tensor(forces, dtype=positions.dtype, device=positions.device)
+        potentials = torch.tensor(
+            potentials, dtype=positions.dtype, device=positions.device
+        )
+
+        # Ensure potentials have shape (batch_size,)
+        potentials = potentials.reshape(-1).squeeze(-1)
+
+        # check if potentials is of shape (batch_size,)
+        print("potentials.shape:", potentials.shape)
+
+        return forces, potentials

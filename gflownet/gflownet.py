@@ -20,6 +20,19 @@ def get_alg(cfg, task=None):
 
 
 def fl_inter_logr(x, logreward_fn, config, cur_t, sigma=None):  # x: (bs, dim)
+    """
+    Calculate the intermediate log reward for a trajectory.
+
+    Args:
+        x (torch.Tensor): The state, shape: [b, d]
+        logreward_fn (callable): The log reward function
+        config (dict): The configuration
+        cur_t (float): The current time
+        sigma (float, optional): The noise level. Defaults to None.
+
+    Returns:
+        torch.Tensor: The intermediate log reward, shape: [b]
+    """
     if sigma is None:
         sigma = config.sigma
 
@@ -35,37 +48,67 @@ def fl_inter_logr(x, logreward_fn, config, cur_t, sigma=None):  # x: (bs, dim)
 
     print(
         "Shapes of x, logp0, logreward_fn(x):",
-        x.shape,
-        logp0.shape,
-        logreward_fn(x).shape,
+        x.shape,  # [b, d]
+        logp0.shape,  # [b]
+        logreward_fn(x).shape,  # it is now [b, 1]
     )
 
+    # ! Since logreward_fn(x) is now [b, 1], the result is [b, b] since the broadcast
+    # ! logp0 is [b], so the result is [b, b]
+    #! Fixed this issue by squeezing the last dimension of logreward_fn(x) in the potential calculation
     fl_logr = logreward_fn(x) * ratio + logp0 * (1 - ratio)
 
     return fl_logr
 
 
 def sample_traj(gfn, config, logreward_fn, batch_size=None, sigma=None):
+    """
+    Sample a trajectory from the GFlowNet.
+
+    Args:
+        gfn (GFlowNet): The GFlowNet to sample from.
+        config (dict): The configuration.
+        logreward_fn (callable): The log reward function.
+        batch_size (int, optional): The batch size. Defaults to None.
+        sigma (float, optional): The noise level. Defaults to None.
+
+    Returns:
+        tuple: A tuple containing the trajectory and information.
+            - traj: list of tuples, each containing a time, a state, and a reward.
+                - t: time, a scalar, shape: []
+                - x: state, shape: [b, d]
+                - r: reward, shape: [b]
+            - info: dictionary containing information about the trajectory.
+    """
     if batch_size is None:
         batch_size = config.batch_size
     device = gfn.device
     if sigma is None:
         sigma = config.sigma
 
-    x = gfn.zero(batch_size).to(device)
+    #! For usual DGFS, we start from a Dirac distribution at zero,
+    #! but for molecular GFNs, we start from a given starting state of configuration
+    x = gfn.zero(batch_size).to(device)  # shape: (b, d)
     fl_logr = fl_inter_logr(x, logreward_fn, config, cur_t=0.0, sigma=sigma)
-    traj = [(torch.tensor(0.0), x.cpu(), fl_logr.cpu())]  # (t, x, logr)
+    # check if the log reward is of shape [b, 1]
+    print("fl_logr.shape:", fl_logr.shape)  # Now it is [b, b], why?
+    traj = [(torch.tensor(0.0), x.cpu(), fl_logr.cpu())]  # a tuple of (t, x, logr)
     inter_loss = torch.zeros(batch_size).to(device)
 
     x_max = 0.0
     for cur_t in torch.arange(0, config.t_end, config.dt).to(device):
         x, uw_term, u2_term = gfn.step_forward(cur_t, x, config.dt, sigma=sigma)
+        # print("Current time:", cur_t)
+        # print("x output of step_forward:", x)
+        # No issue here, checked
         x = x.detach()
         fl_logr = (
             fl_inter_logr(x, logreward_fn, config, cur_t=cur_t + config.dt, sigma=sigma)
             .detach()
             .cpu()
         )
+        # check if detach is needed
+        # print("Trying x.detach().cpu():", x.detach().cpu()) # no issue
         traj.append((cur_t.cpu() + config.dt, x.detach().cpu(), fl_logr))
         inter_loss += (u2_term + uw_term).detach()
         x_max = max(x_max, x.abs().max().item())
@@ -73,6 +116,7 @@ def sample_traj(gfn, config, logreward_fn, batch_size=None, sigma=None):
     pis_terminal = -gfn.nll_prior(x) - logreward_fn(x)
     pis_log_weight = inter_loss + pis_terminal
     info = {"pis_logw": pis_log_weight, "x_max": x_max}
+
     return traj, info
 
 
@@ -238,6 +282,20 @@ class GFlowNet(nn.Module):
         return dlogp - logr
 
     def logr_from_traj(self, traj):
+        """
+        Get the log reward from a trajectory.
+
+        Args:
+            traj (list): A list of tuples, each containing a time, a state, and a reward.
+                            - t: time, shape: [b, 1]
+                            - x: state, shape: [b, d]
+                            - r: reward, shape: [b, 1]
+
+        Returns:
+            torch.Tensor: The log reward, shape: [b, 1]
+        """
+        # check if the reward is of shape [b, 1]
+        print("traj[-1][2].shape:", traj[-1][2].shape)
         return traj[-1][2].to(self.device)
 
     @torch.no_grad()

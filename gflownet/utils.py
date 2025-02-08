@@ -46,21 +46,26 @@ def seed_torch(seed, verbose=True):
 
 
 def normal_logp(x, mean=0.0, sigma=1.0):
-    # x: (bs, dim)
-    # mean: scalar or (bs, dim)
-    # sigma: scalar float or (bs, 1); assume all dimensions have the same sigma
+    """
+    Calculate the log probability of a normal distribution.
 
+    Args:
+        x (torch.Tensor): The state, shape: [b, d]
+        mean (float, optional): The mean of the normal distribution. Defaults to 0.0.
+        sigma (float, optional): The standard deviation of the normal distribution. Defaults to 1.0.
+
+    Returns:
+        torch.Tensor: The log probability, shape: [b, 1]
+    """
     assert x.ndim == 2
-    # dim = x.shape[-1]
     if isinstance(sigma, torch.Tensor):
         assert sigma.ndim == 2
         log_sigma = torch.log(sigma)
     else:
         log_sigma = np.log(sigma)
 
-    # broadcast: sigma (bs, 1) + mean (bs, dim) -> (bs, dim)
     neg_logp = 0.5 * np.log(2 * np.pi) + log_sigma + 0.5 * (x - mean) ** 2 / (sigma**2)
-    return torch.sum(-neg_logp, dim=-1)  # (bs,)
+    return torch.sum(-neg_logp, dim=-1, keepdim=False)  # Return shape [b]
 
 
 def loss2ess_info(loss):

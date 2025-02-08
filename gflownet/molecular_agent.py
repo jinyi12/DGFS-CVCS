@@ -36,7 +36,13 @@ class MolecularGFlowNetAgent:
     def train(self, traj):
         """
         Perform a training step given a batch of trajectories.
+        Args:
+            traj (list): A list of tuples, each containing a time, a state, and a reward.
+                - t: time, shape: []
+                - x: state, shape: [b, d]
+                - r: reward, shape: [b]
         """
+        print("Shape of reward:", traj[-1][2].shape)
         self.gfn.train()
         loss_info = self.gfn.train_step(traj)
         return loss_info
