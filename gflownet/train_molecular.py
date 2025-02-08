@@ -145,7 +145,7 @@ def main():
         traj, sample_info = agent.sample(args.batch_size)
 
         # Training step
-        print("Shape of reward before training:", traj[-1][2].shape)
+        # print("Shape of reward before training:", traj[-1][2].shape)
         loss_info = agent.train(traj)
         global_step += 1
 

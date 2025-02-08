@@ -9,7 +9,56 @@ from gflownet.gflownet import (
     normal_logp,
     cal_subtb_coef_matrix,
     sample_traj,
+    fl_inter_logr,
 )
+
+
+def sample_molecular_traj(gfn, config, logreward_fn, batch_size=None, sigma=None):
+    """
+    Sample a trajectory for molecular systems, starting from a defined molecular state.
+
+    Args:
+        gfn (MolecularGFlowNet): The GFlowNet to sample from.
+        config (dict): The configuration.
+        logreward_fn (callable): The log reward function.
+        batch_size (int, optional): The batch size. Defaults to None.
+        sigma (float, optional): The noise level. Defaults to None.
+
+    Returns:
+        tuple: A tuple containing the trajectory and information.
+            - traj: list of tuples, each containing a time, a state, and a reward.
+            - info: dictionary containing information about the trajectory.
+    """
+    if batch_size is None:
+        batch_size = config.batch_size
+    device = gfn.device
+    if sigma is None:
+        sigma = config.sigma
+
+    # Start from the defined molecular state instead of zeros
+    x = gfn.task.get_start_state(batch_size).to(device)  # shape: (b, d)
+    fl_logr = fl_inter_logr(x, logreward_fn, config, cur_t=0.0, sigma=sigma)
+    traj = [(torch.tensor(0.0), x.cpu(), fl_logr.cpu())]
+    inter_loss = torch.zeros(batch_size).to(device)
+
+    x_max = 0.0
+    for cur_t in torch.arange(0, config.t_end, config.dt).to(device):
+        x, uw_term, u2_term = gfn.step_forward(cur_t, x, config.dt, sigma=sigma)
+        x = x.detach()
+        fl_logr = (
+            fl_inter_logr(x, logreward_fn, config, cur_t=cur_t + config.dt, sigma=sigma)
+            .detach()
+            .cpu()
+        )
+        traj.append((cur_t.cpu() + config.dt, x.detach().cpu(), fl_logr))
+        inter_loss += (u2_term + uw_term).detach()
+        x_max = max(x_max, x.abs().max().item())
+
+    pis_terminal = -gfn.nll_prior(x) - logreward_fn(x)
+    pis_log_weight = inter_loss + pis_terminal
+    info = {"pis_logw": pis_log_weight, "x_max": x_max}
+
+    return traj, info
 
 
 class MolecularGFlowNet(DetailedBalance):
@@ -44,7 +93,7 @@ class MolecularGFlowNet(DetailedBalance):
                 - log_pf: shape: [b, T]
                 - log_pb: shape: [b, T]
         #"""
-        print("Length of traj:", len(traj))
+        # print("Length of traj:", len(traj))
         # print("First element of traj:", traj[0])
         # print("traj[0][1].shape:", traj[0][1].shape)
         batch_size = traj[0][1].shape[0]  # Get batch size from first trajectory element
@@ -55,18 +104,18 @@ class MolecularGFlowNet(DetailedBalance):
             t[None].to(self.device).repeat(batch_size, 1) for (t, x, r) in traj
         ]  # Times
 
-        print("xs shape:", xs[0].shape)
-        print("ts shape:", ts[0].shape)
+        # print("xs shape:", xs[0].shape)
+        # print("ts shape:", ts[0].shape)
 
         state = torch.cat(xs[:-1], dim=0)  # All states except last (T*b, d)
         next_state = torch.cat(xs[1:], dim=0)  # All states except first (T*b, d)
         time = torch.cat(ts[:-1], dim=0)  # All times except last (T*b, 1)
         next_time = torch.cat(ts[1:], dim=0)  # All times except first (T*b, 1)
 
-        print("state shape:", state.shape)
-        print("next_state shape:", next_state.shape)
-        print("time shape:", time.shape)
-        print("next_time shape:", next_time.shape)
+        # print("state shape:", state.shape)
+        # print("next_state shape:", next_state.shape)
+        # print("time shape:", time.shape)
+        # print("next_time shape:", next_time.shape)
 
         log_pf = self.log_pf(time, state, next_state)  # Forward probabilities
         log_pb = self.log_pb(next_time, next_state, state)  # Backward probabilities
@@ -99,9 +148,9 @@ class MolecularGFlowNet(DetailedBalance):
         # print("logr_terminal shape:", logr_terminal.shape)
         flows[:, -1] = logr_terminal
 
-        print("Shape of log_pf:", log_pf.shape)
-        print("Shape of log_pb:", log_pb.shape)
-        print("Shape of flows:", flows.shape)
+        # print("Shape of log_pf:", log_pf.shape)  # (b, T)
+        # print("Shape of log_pb:", log_pb.shape)  # (b, T)
+        # print("Shape of flows:", flows.shape)  # (b, T+1)
 
         return {"log_pf": log_pf, "log_pb": log_pb, "flows": flows}
 
@@ -116,12 +165,11 @@ class MolecularGFlowNet(DetailedBalance):
         )
         diff_logp = log_pf - log_pb
         # Check shapes before concatenating
-        print("diff_logp shape:", diff_logp.shape)
-        print("torch.zeros(batch_size, 1).shape:", torch.zeros(batch_size, 1).shape)
-        print("diff_logp.cumsum(dim=-1).shape:", diff_logp.cumsum(dim=-1).shape)
+        # print("diff_logp shape:", diff_logp.shape)
+        # print("torch.zeros(batch_size, 1).shape:", torch.zeros(batch_size, 1).shape)
+        # print("diff_logp.cumsum(dim=-1).shape:", diff_logp.cumsum(dim=-1).shape)
 
-        # diff_logp is of shape [1600] now for some reason..
-        #! original gfn has [b, T]
+        # Shape of [b, T]
         diff_logp_padded = torch.cat(
             (torch.zeros(batch_size, 1).to(diff_logp), diff_logp.cumsum(dim=-1)), dim=1
         )
@@ -139,6 +187,7 @@ class MolecularGFlowNet(DetailedBalance):
         return loss, info
 
     def train_step(self, traj):
+        """Override train_step to use molecular trajectory sampling"""
         self.train()
         loss, info = self.train_loss(traj)
         self.optimizer.zero_grad()
@@ -152,7 +201,8 @@ class MolecularGFlowNet(DetailedBalance):
         self.eval()
         if logreward_fn is None:
             logreward_fn = self.logr_fn
-        traj, sample_info = sample_traj(
+        # Use molecular trajectory sampling instead of default
+        traj, sample_info = sample_molecular_traj(
             self, self.cfg, logreward_fn, batch_size=num_samples
         )
         logw = self.log_weight(traj)
@@ -164,3 +214,8 @@ class MolecularGFlowNet(DetailedBalance):
     def visualize(self, traj, logreward_fn=None, step=-1):
         # For molecular tasks (which are high-dimensional), standard 2D visualization is not applicable.
         print("Visualization is not supported for molecular tasks.")
+
+    def zero(self, batch_size, device=None):
+        """Override zero to use molecular starting state instead of zeros"""
+        device = self.device if device is None else device
+        return self.task.get_start_state(batch_size).to(device)

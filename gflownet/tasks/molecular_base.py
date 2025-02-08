@@ -126,6 +126,24 @@ class BaseMolecularDynamics(BaseTask):
         potentials = potentials.reshape(-1).squeeze(-1)
 
         # check if potentials is of shape (batch_size,)
-        print("potentials.shape:", potentials.shape)
+        # print("potentials.shape:", potentials.shape)
 
         return forces, potentials
+
+    def get_start_state(self, batch_size):
+        """Get initial state replicated batch_size times.
+
+        Args:
+            batch_size (int): Number of copies to create
+
+        Returns:
+            torch.Tensor: Initial positions tensor of shape (batch_size, num_particles * 3)
+        """
+        # Convert OpenMM Vec3 positions to numpy array
+        pos_np = np.array([[v.x, v.y, v.z] for v in self.position])
+        # Convert to torch tensor and flatten
+        pos_flat = torch.tensor(pos_np, dtype=torch.float32).reshape(
+            -1
+        )  # flatten to (num_particles * 3)
+        # Repeat for batch size
+        return pos_flat.repeat(batch_size, 1)  # Shape: (batch_size, num_particles * 3)

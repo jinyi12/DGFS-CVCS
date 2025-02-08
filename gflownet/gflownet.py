@@ -46,12 +46,12 @@ def fl_inter_logr(x, logreward_fn, config, cur_t, sigma=None):  # x: (bs, dim)
     coef = max(np.sqrt(0.01 * config.t_end), np.sqrt(cur_t))  # cur_t could be 0
     logp0 = normal_logp(x, 0.0, coef * sigma)
 
-    print(
-        "Shapes of x, logp0, logreward_fn(x):",
-        x.shape,  # [b, d]
-        logp0.shape,  # [b]
-        logreward_fn(x).shape,  # it is now [b, 1]
-    )
+    # print(
+    #     "Shapes of x, logp0, logreward_fn(x):",
+    #     x.shape,  # [b, d]
+    #     logp0.shape,  # [b]
+    #     logreward_fn(x).shape,  # it is now [b, 1]
+    # )
 
     # ! Since logreward_fn(x) is now [b, 1], the result is [b, b] since the broadcast
     # ! logp0 is [b], so the result is [b, b]
