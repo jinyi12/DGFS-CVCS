@@ -22,8 +22,8 @@ class MolecularGFlowNetAgent:
         """
         self.cfg = cfg
         # Create GFlowNet with template task from mds
-        self.gfn = MolecularGFlowNet(cfg, task=mds.template_task)
-        self.device = self.gfn.device
+        self.device = cfg.device
+        self.gfn = MolecularGFlowNet(cfg, task=mds.template_task).to(self.device)
 
     # def sample(self, num_samples):
     #     """
@@ -48,6 +48,7 @@ class MolecularGFlowNetAgent:
             tuple: (traj, info) containing trajectories and sampling info
         """
         device = self.gfn.device
+        print("Device of gfn:", device)
         positions = torch.zeros(
             (num_samples, int(self.cfg.t_end / self.cfg.dt) + 1, mds.num_particles, 3),
             device=device,
@@ -72,11 +73,15 @@ class MolecularGFlowNetAgent:
 
         # Sample trajectories
         for s in range(1, int(self.cfg.t_end / self.cfg.dt) + 1):
-            cur_t = torch.tensor(s * self.cfg.dt)
+
+            cur_t = torch.tensor(s * self.cfg.dt, device=device)
+
+            # check device of cur_t, and x
+            # print(f"cur_t device: {cur_t.device}, x device: {x.device}")
 
             # Get GFlowNet policy output (force bias)
             bias = self.gfn.f(cur_t, x.detach()).detach()
-            bias = bias.reshape(num_samples, mds.num_particles, 3).cpu().numpy()
+            bias = bias.reshape(num_samples, mds.num_particles, 3)
 
             # Step all simulations with bias force
             mds.step(bias)
@@ -84,12 +89,15 @@ class MolecularGFlowNetAgent:
             # Get updated states
             position, force = mds.report()
             positions[:, s] = position
-            forces[:, s] = force - torch.tensor(bias, device=device)
+            forces[:, s] = force - 1e-6 * torch.tensor(
+                bias, device=device
+            )  # kJ/(mol*nm) -> (da*nm)/fs**2
 
             # Update trajectory
             x = position.reshape(num_samples, -1)
             fl_logr = self.gfn.logr_fn(x)
-            traj.append((cur_t, x.cpu(), fl_logr.cpu()))
+            traj.append((cur_t.cpu(), x.cpu(), fl_logr.cpu()))
+            # traj.append((cur_t, x, fl_logr))
 
         # Reset all simulations
         mds.reset()

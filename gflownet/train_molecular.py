@@ -30,6 +30,9 @@ parser.add_argument("--weight_decay", default=1e-4, type=float)
 parser.add_argument("--xclip", default=10.0, type=float)
 parser.add_argument("--nn_clip", default=100.0, type=float)
 parser.add_argument("--lgv_clip", default=100.0, type=float)
+parser.add_argument(
+    "--task", default="molecular", type=str
+)  # molecular task for this project
 
 # Molecular Config
 parser.add_argument("--start_state", default="c5", type=str)
@@ -87,6 +90,7 @@ def main():
             "lgv_clip": args.lgv_clip,
             "N": int(args.t_end / args.dt),
             "batch_size": args.batch_size,
+            "task": args.task,
             # Network configuration (add these based on GFlowNet requirements)
             "f_func": {
                 "_target_": "gflownet.network.FourierMLP",
