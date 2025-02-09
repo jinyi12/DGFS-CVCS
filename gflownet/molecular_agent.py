@@ -53,10 +53,17 @@ class MolecularGFlowNetAgent:
             (num_samples, int(self.cfg.t_end / self.cfg.dt) + 1, mds.num_particles, 3),
             device=device,
         )
+        print("Positions shape:", positions.shape)
+        print(
+            "1st index of position cfg.t_end / cfg.dt shape:",
+            positions[:, 0].shape,
+        )
         forces = torch.zeros_like(positions)
 
         # Get initial state from all simulations
         position, force = mds.report()
+        print("Position shape:", position.shape)
+        print("Force shape:", force.shape)
         positions[:, 0] = position
         forces[:, 0] = force
 

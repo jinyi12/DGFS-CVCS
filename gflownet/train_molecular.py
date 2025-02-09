@@ -44,7 +44,7 @@ parser.add_argument("--friction", default=0.001, type=float)
 parser.add_argument("--num_steps", default=1000, type=int)
 parser.add_argument("--batch_size", default=16, type=int)
 parser.add_argument("--num_epochs", default=1000, type=int)
-parser.add_argument("--num_samples", default=64, type=int)
+# parser.add_argument("--num_samples", default=64, type=int)
 parser.add_argument("--learning_rate", default=1e-4, type=float)
 parser.add_argument("--start_temperature", default=600, type=float)
 parser.add_argument("--end_temperature", default=300, type=float)
@@ -167,7 +167,8 @@ def main():
         if global_step % args.eval_interval == 0:
             agent.gfn.eval()
             with torch.no_grad():
-                eval_traj, eval_info = agent.sample(args.num_samples, mds, current_temp)
+                print("Mds num samples:", mds.num_samples)
+                eval_traj, eval_info = agent.sample(args.batch_size, mds, current_temp)
                 ess_info = loss2ess_info(eval_info)
                 logger.info(
                     f"Eval Step {global_step}: "
