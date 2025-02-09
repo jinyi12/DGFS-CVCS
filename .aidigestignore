@@ -1,11 +1,13 @@
-./REFERENCE_tps-dps-0941/
-./results/
-./outputs/
+REFERENCE_tps-dps-0941/
+results/
+outputs/
 *.egg-info/
-./.cursor/
+.cursor/
 .cursorignore
 .gitignore
 .vscode/
 .idea/
 .pytest_cache/
 .ruff_cache/
+.aidigestignore
+*.pdb
