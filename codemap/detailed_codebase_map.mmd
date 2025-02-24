@@ -1,0 +1,126 @@
+flowchart TD
+    %% Configs
+    config["configs/main.yaml\n(Configuration)"]
+    
+    %% Entry Points
+    main_entry["gflownet/main.py\nmain() - Entry point\nrefine_cfg() - Process config"]
+    train_mol_entry["train_molecular.py\nmain() - Molecular training entry"]
+    
+    %% Base Abstract Classes
+    baseTask["BaseTask (tasks/base.py)\n- energy(x)\n- score(x)\n- log_reward(x)\n- get_state()\n- setup_openmm_system()"]
+    
+    baseMolDynamics["BaseMolecularDynamics (tasks/molecular_base.py)\n- __init__(cfg)\n- setup() [abstract]\n- get_md_info()\n- step(forces)\n- get_state()\n- reset()\n- set_temperature()\n- energy_function(positions)\n- energy(x), score(x), log_reward(x)\n- get_start_state(batch_size)"]
+    
+    %% Task Implementations
+    molTask["MolecularTask (tasks/molecular.py)\n- __init__(cfg)\n- setup() - creates OpenMM system"]
+    
+    molMDs["MolecularMDs (tasks/molecular_mds.py)\n- __init__(cfg, num_samples)\n- _init_mds(cfg)\n- step(force)\n- report()\n- reset()\n- set_temperature()"]
+    
+    %% Network Architecture
+    network["Network Components (network.py)"]
+    fourierMLP["FourierMLP\n- __init__(in_shape, out_shape, ...)\n- forward(cond, inputs)"]
+    timeConder["TimeConder\n- __init__(channel, out_dim, num_layers)\n- forward(t)"]
+    identityOne["IdentityOne\n- __call__(t, y)"]
+    
+    %% Base GFlowNet Classes
+    gfn_base["GFlowNet (gflownet.py)\n- __init__(cfg, task)\n- zero(batch_size)\n- f(t, x)\n- flow(t, x)\n- nll_prior(x)\n- log_pf(t, x, y)\n- log_pb(t, y, x)\n- step_forward(t, x, dt)\n- log_weight(traj)\n- logr_fn(x)\n- logr_from_traj(traj)"]
+    
+    db_base["DetailedBalance (gflownet.py)\n- __init__(cfg, task)\n- eval_step(num_samples)\n- visualize(traj)"]
+    
+    %% GFlowNet Implementations
+    subtb_traj["SubTrajectoryBalanceTrajectoryBased\n- __init__(cfg, task)\n- get_flow_logp_from_traj(traj)\n- train_loss(traj)\n- train_step(traj)"]
+    
+    subtb_trans["SubTrajectoryBalanceTransitionBased\n- __init__(cfg, task)\n- train_step(traj)"]
+    
+    %% Molecular GFlowNet
+    mol_gfn["MolecularGFlowNet (molecular_gfn.py)\n- __init__(cfg, task)\n- get_flow_logp_from_traj(traj)\n- train_loss(traj)\n- train_step(traj)\n- eval_step(num_samples)\n- visualize(traj)\n- zero(batch_size)"]
+    
+    %% Agent
+    mol_agent["MolecularGFlowNetAgent (molecular_agent.py)\n- __init__(cfg, mds)\n- sample(num_samples, mds, temperature)\n- train(traj)"]
+    
+    %% Utility Functions
+    utils["utils.py\n- seed_torch(seed)\n- normal_logp(x, mean, sigma)\n- loss2ess_info(loss)\n- setup_logging(save_dir)"]
+    
+    sample_traj_fn["sample_traj (gflownet.py)\nSamples trajectory from GFlowNet"]
+    
+    sample_mol_traj_fn["sample_molecular_traj (molecular_gfn.py)\nSamples molecular trajectory"]
+    
+    fl_inter_logr_fn["fl_inter_logr (gflownet.py)\nCalculates intermediate log reward"]
+    
+    cal_coef_fn["cal_subtb_coef_matrix (gflownet.py)\nCalculates coefficient matrix for loss"]
+    
+    get_alg_fn["get_alg (gflownet.py)\nInstantiates GFlowNet algorithm"]
+    
+    %% Inheritance Relationships
+    baseTask -->|extends| baseMolDynamics
+    baseMolDynamics -->|extends| molTask
+    gfn_base -->|extends| db_base
+    db_base -->|extends| subtb_traj
+    db_base -->|extends| subtb_trans
+    db_base -->|extends| mol_gfn
+    
+    %% Composition Relationships
+    network -->|contains| fourierMLP
+    network -->|contains| timeConder
+    network -->|contains| identityOne
+    
+    %% Main Entry Flow
+    config -->|configures| main_entry
+    config -->|configures| train_mol_entry
+    main_entry -->|uses| get_alg_fn
+    get_alg_fn -->|returns| subtb_traj
+    get_alg_fn -->|returns| subtb_trans
+    
+    %% Training Flow
+    train_mol_entry -->|creates| molMDs
+    train_mol_entry -->|creates| mol_agent
+    mol_agent -->|creates| mol_gfn
+    mol_agent -->|samples via| sample_mol_traj_fn
+    mol_agent -->|trains| mol_gfn
+    
+    %% MolecularTask Flow
+    baseMolDynamics -->|wraps| molTask
+    molTask -->|sets up OpenMM| openmm[OpenMM Simulation]
+    molMDs -->|manages multiple| molTask
+    
+    %% GFlowNet Function Usage
+    gfn_base -->|uses| fl_inter_logr_fn
+    mol_gfn -->|uses| sample_mol_traj_fn
+    subtb_traj -->|uses| cal_coef_fn
+    subtb_trans -->|uses| cal_coef_fn
+    main_entry -->|uses| sample_traj_fn
+    
+    %% Network Usage in GFlowNet
+    gfn_base -->|uses| fourierMLP
+    gfn_base -->|uses| identityOne
+    
+    %% Utility Usage
+    main_entry -->|uses| utils
+    train_mol_entry -->|uses| utils
+    gfn_base -->|uses| utils
+    
+    %% Loss Function Path (Highlighted)
+    subgraph Loss_Function_Path [Loss Function Path]
+        direction TB
+        mol_gfn -->|implements| train_loss_node["train_loss(traj)\nComputes subtrajectory balance loss"]
+        train_loss_node -->|uses| get_flow_logp["get_flow_logp_from_traj(traj)\nComputes flow and probabilities"]
+        get_flow_logp -->|computes| log_pf_node["log_pf(time, state, next_state)\nForward probability"]
+        get_flow_logp -->|computes| log_pb_node["log_pb(next_time, next_state, state)\nBackward probability"]
+        get_flow_logp -->|computes| flow_node["flow(times, states)\nNetwork flow prediction"]
+        train_loss_node -->|creates| a2_term["A2 Matrix Computation\nContains the balanced terms to minimize"]
+        a2_term -->|using| coef_matrix["Coefficient Matrix\nFrom cal_subtb_coef_matrix()"]
+        train_loss_node -->|returns| final_loss["Loss and Info\nFor backpropagation"]
+    end
+    
+    %% Critical Methods for Loss Function
+    style train_loss_node fill:#f9d,stroke:#333,stroke-width:2px
+    style get_flow_logp fill:#f9d,stroke:#333,stroke-width:2px
+    style log_pf_node fill:#f9d,stroke:#333,stroke-width:2px
+    style log_pb_node fill:#f9d,stroke:#333,stroke-width:2px
+    style flow_node fill:#f9d,stroke:#333,stroke-width:2px
+    style a2_term fill:#f9d,stroke:#333,stroke-width:2px
+    style coef_matrix fill:#f9d,stroke:#333,stroke-width:2px
+    style final_loss fill:#f9d,stroke:#333,stroke-width:2px
+    
+    %% Styling for clarity
+    style Loss_Function_Path fill:#fff8f0,stroke:#f66,stroke-width:2px 
