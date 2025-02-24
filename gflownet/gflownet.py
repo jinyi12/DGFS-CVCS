@@ -287,12 +287,12 @@ class GFlowNet(nn.Module):
 
         Args:
             traj (list): A list of tuples, each containing a time, a state, and a reward.
-                            - t: time, shape: [b, 1]
+                            - t: time, shape: []
                             - x: state, shape: [b, d]
-                            - r: reward, shape: [b, 1]
+                            - r: reward, shape: [b]
 
         Returns:
-            torch.Tensor: The log reward, shape: [b, 1]
+            torch.Tensor: The log reward, shape: [b]
         """
         # check if the reward is of shape [b, 1]
         print("traj[-1][2].shape:", traj[-1][2].shape)

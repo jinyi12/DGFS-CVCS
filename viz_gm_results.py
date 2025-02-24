@@ -30,12 +30,18 @@ def visualize_results(cfg: DictConfig) -> None:
     gflownet = get_alg(cfg, data)
     gflownet.to(device)
 
+    def logr_fn_detach(x):
+        logr = -data.energy(x).detach()
+        logr = torch.where(torch.isinf(logr), cfg.logr_min, logr)
+        logr = torch.clamp(logr, min=cfg.logr_min)
+        return logr
+
     # Load the best model if it exists
     # checkpoint_dir = os.path.join(cfg.work_directory, "checkpoints")
     checkpoint_dir = (
         "/hpc/dctrl/jy384/DGFS-CVCS/outputs/2025-02-04/14-55-14/checkpoints"
     )
-    model_files = [f for f in os.listdir(checkpoint_dir) if f.startswith("best_model")]
+    model_files = [f for f in os.listdir(checkpoint_dir) if f.startswith("final_model")]
 
     if model_files:
         # Load the latest best model
@@ -56,7 +62,11 @@ def visualize_results(cfg: DictConfig) -> None:
     gflownet.eval()
     with torch.no_grad():
         # Generate 15000 samples for visualization
-        traj, eval_info = gflownet.eval_step(15000, data.energy)
+        traj, eval_info = gflownet.eval_step(
+            15000,
+            logr_fn_detach,
+        )
+        print("Eval info:", eval_info)
         samples = traj[-1][1]  # Get final states from trajectories
 
         # Create visualization directory
