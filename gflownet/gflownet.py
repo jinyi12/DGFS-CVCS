@@ -169,6 +169,7 @@ class GFlowNet(nn.Module):
                 return torch.clip(self.f_func(t, x), -self.nn_clip, self.nn_clip)
 
         elif f_format in ["t_tnet_grad", "tgrad"]:
+            # ! This is the time conditioned network, NN_2 in the paper
             self.lgv_coef = TimeConder(self.cfg.f_func.channels, 1, 3)
 
             def _fn(t, x):
@@ -177,6 +178,8 @@ class GFlowNet(nn.Module):
 
                 f = torch.clip(self.f_func(t, x), -self.nn_clip, self.nn_clip)
                 lgv_coef = self.lgv_coef(t)
+
+                # ! NN_1 + NN_2 \cdot \nabla log \mu(x)
                 return f - lgv_coef * grad
 
         else:
