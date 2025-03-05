@@ -135,7 +135,9 @@ class GFlowNet(nn.Module):
         self.t_end = cfg.t_end
         self.dt = cfg.dt
 
+        # the noise function
         self.g_func = instantiate(cfg.g_func)
+        # the drift function
         self.f_func = instantiate(cfg.f_func)  # learnable
         self.nn_clip = cfg.nn_clip
         self.lgv_clip = cfg.lgv_clip
@@ -468,6 +470,7 @@ class GFlowNet(nn.Module):
 class DetailedBalance(GFlowNet):
     def __init__(self, cfg, task=None):
         super().__init__(cfg, task)
+        # ! We need to replace the FourierMLP with an equivalent GNN (refer to E3 diffusion equivariant GNN paper)
         self.flow = FourierMLP(
             self.data_ndim,
             1,

@@ -78,8 +78,20 @@ class BaseMolecularDynamics(BaseTask):
         return forces
 
     def log_reward(self, x):
-        """Compute log reward as negative energy"""
-        return -self.energy(x)
+        """Compute log reward as negative energy, normalized by thermal energy kBT"""
+        # Get raw energy in kJ/mol from self.energy()
+        energy_tensor = self.energy(x)
+        # energy() returns potentials, so energy_tensor is potential
+        kB = 0.008314  # kJ/(mol*K)
+        # Extract temperature in Kelvin from self.temperature
+        T = self.temperature.value_in_unit(unit.kelvin)
+        beta = 1.0 / (kB * T)
+        # Compute log_reward as negative reduced energy
+        # Assuming energy_tensor is a tensor of potentials in kJ/mol
+        log_reward_val = -beta * energy_tensor
+        print("[DEBUG] Temperature (K):", T, "| kB:", kB, "| Beta (1/(kB*T)):", beta)
+        print("[DEBUG] Log reward (after -beta*energy):", log_reward_val)
+        return log_reward_val
 
     def energy_function(self, positions):
         """Compute both forces and potential energy
@@ -88,7 +100,7 @@ class BaseMolecularDynamics(BaseTask):
             positions: torch.Tensor of shape (batch_size, num_particles * 3)
 
         Returns:
-            tuple: (forces, potentials) as numpy arrays
+            tuple: (forces, potentials) as torch tensors
         """
         forces, potentials = [], []
         for pos in positions:
@@ -111,10 +123,11 @@ class BaseMolecularDynamics(BaseTask):
                 unit.kilojoules / unit.mole
             )
 
-            forces.append(
-                np.array(force).flatten()
-            )  # Convert to numpy array and flatten
+            forces.append(np.array(force).flatten())
             potentials.append(potential)
+
+            # # Debug print: raw potential value for this sample
+            # print("[DEBUG] Raw potential (kJ/mol):", potential)
 
         # Stack and convert to torch tensors
         forces = torch.tensor(forces, dtype=positions.dtype, device=positions.device)
@@ -125,8 +138,8 @@ class BaseMolecularDynamics(BaseTask):
         # Ensure potentials have shape (batch_size,)
         potentials = potentials.reshape(-1).squeeze(-1)
 
-        # check if potentials is of shape (batch_size,)
-        # print("potentials.shape:", potentials.shape)
+        # # Debug print: complete potentials tensor
+        # print("[DEBUG] Potentials tensor:", potentials)
 
         return forces, potentials
 
